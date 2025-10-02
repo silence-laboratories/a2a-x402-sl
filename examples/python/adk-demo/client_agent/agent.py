@@ -16,13 +16,22 @@ import httpx
 # Local imports
 from client_agent._task_store import TaskStore
 from client_agent.client_agent import ClientAgent
-from client_agent.wallet import MockLocalWallet
+from client_agent.wallet import MockLocalWallet, SLWallet
+
+# Choose wallet implementation based on environment
+import os
+if os.getenv('USE_MOCK_WALLET', 'false').lower() == 'true':
+    # Use mock local wallet
+    wallet = MockLocalWallet()
+else:
+    # Use Silent Labs MPC wallet (default)
+    wallet = SLWallet()
 
 root_agent = ClientAgent(
     remote_agent_addresses=[
         "http://localhost:10000/agents/merchant_agent",
     ],
     http_client=httpx.AsyncClient(timeout=30),
-    wallet=MockLocalWallet(),
+    wallet=wallet,
     task_callback=TaskStore().update_task,
 ).create_agent()

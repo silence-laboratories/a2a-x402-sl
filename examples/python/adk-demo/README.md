@@ -1,6 +1,6 @@
 # ADK x402 Payment Protocol Demo
 
-This project demonstrates a complete, end-to-end payment flow between two agents using the **A2A x402 Payment Protocol Extension**. It serves as a reference implementation for developers looking to add payment capabilities to their own agents.
+A complete example demonstrating payments using the A2A protocol with Silence Laboratories MPC wallet integration.
 
 The demo consists of two main components:
 1.  A **Client Agent** that acts as an orchestrator, delegating tasks and handling the user-facing interaction.
@@ -14,6 +14,9 @@ The reusable, core logic for the x402 protocol is encapsulated in the `x402_a2a`
 - Python 3.13+
 - `uv` (for environment and package management)
 - Google API key (you can create one [here](https://ai.google.dev/gemini-api/docs/api-key))
+- **Silence Laboratories MPC Wallet** (for SLWallet)
+  - You need to create an wallet on the [Silence Laboratories MPC Wallet](https://paired-key-vault.demo.silencelaboratories.com) and setup a wallet,Setup instructions are [here](https://shadowed-grapple-8a1.notion.site/Browser-Intent-S-L-Wallet-Using-Duo-sdk-271fe2c2b4bd8067b7b2cb3e20308eb1).
+- **Note**: SLWallet currently only works with mock facilitator (`USE_MOCK_FACILITATOR=true`)
 
 ### 1. Setup the Environment
 First, sync the virtual environment to install all necessary dependencies, including the local `x402_a2a` library in editable mode.
@@ -59,43 +62,66 @@ uv --directory=examples/python/adk-demo run adk web --port=8000
 This will start the ADK web server, usually on `localhost:8000`. Open this URL in your browser to interact with the client agent and start the purchase flow.
 
 ### 4. Try the Payment Demo
-Once both servers are running and you've navigated to the web UI, you can test the x402 payment flow by selecting the `client_agent` and asking about purchasing an item such as "I want to buy a banana". The client agent will discover available merchants, request payment details, and guide you through the purchase process.
+Once both servers are running and you've navigated to the web UI, you can test the x402 payment flow by selecting the `client_agent` and asking about purchasing an item such as "I want to buy a nike shoes". The client agent will discover available merchants, request payment details, and guide you through the purchase process.
 
-![Demo Purchase Flow 🍌](assets/buy_banana.png)
+## How It Works
+This demo uses the Silence Laboratories MPC wallet to provide secure transaction signing without exposing private keys. The system consists of:
 
-## Architectural Flow
+1. **Client Agent** - Orchestrates the payment flow using SLWallet
+2. **Server Agent** - Processes payments via x402 protocol
+3. **MPC Infrastructure** - Manages secure signing through orchestrator service
+4. **MPC Wallet's Phone App** - User's mobile app for transaction approval via push notifications
 
-The demo showcases a clean separation of concerns between the agent's business logic and the payment protocol logic.
+## Payment Flow
 
-1.  **Merchant-Side (Server):**
-    - The `AdkMerchantAgent` contains the core business logic (e.g., providing product details). When payment is required, it doesn't handle any payment logic itself. Instead, it raises a `x402PaymentRequiredException`.
-    - The `x402ServerExecutor` is a wrapper that intercepts this exception. It's responsible for all the server-side protocol logic: creating the `payment-required` response, receiving the client's signed payload, verifying it, and settling it.
-    - This executor is "injected" in `routes.py`, wrapping the core `ADKAgentExecutor`.
+1. **User Request**: Client requests to buy an item (e.g., "I want to buy a nike shoes")
 
-2.  **Client-Side (`ClientAgent`):**
-    - The `ClientAgent` acts as the user's proxy. Its `send_message` tool handles all communication.
-    - When it receives a `payment-required` response from the merchant, it now prompts the user for confirmation.
-    - Upon user confirmation, it calls its injected **Wallet** to sign the payment details.
-    - It then uses the `x402Utils` from the core library to construct a valid `payment-submitted` message and sends it back to the merchant to finalize the purchase.
+2. **Payment Required**: Server responds with x402 payment-required message containing:
+   - Payment amount and currency
+   - Receiver address
+   - Chain ID and contract details
+
+3. **Agent Registration**: If not already registered, SLWallet automatically:
+   - Opens browser to registration page
+   - Waits for user to complete agent registration
+   - Links agent token to user's MPC wallet
+
+4. **Sign Request**: SLWallet creates signature request and send request to SL Wallet's Phone App:
+   - Message hash to sign
+   - Payment details (amount, receiver, chain)
+   - Agent token
+
+5. **Phone Approval**: MPC infrastructure:
+   - Sends push notification to user's registered phone
+   - User reviews transaction details on phone
+   - User approves or rejects the transaction
+
+6. **Signed Response**: MPC orchestrator returns signed transaction data to SLWallet
+
+7. **Payment Submitted**: Client sends signed payment payload back to server
+
+8. **Payment Confirmed**: Server verifies signature and completes the purchase
+
+This flow ensures secure payments without requiring the agent to handle private keys directly, while maintaining user control through phone-based approval.
 
 ## Pluggable Components
 
 A key design goal of this demo is to show how core components can be swapped out with real implementations.
 
-### Facilitator
-The `x402MerchantExecutor` requires a facilitator to verify and settle payments. The facilitator choice is controlled by the `USE_MOCK_FACILITATOR` environment variable (defaults to "true").
-
-- When `USE_MOCK_FACILITATOR=true` (default), it uses a `MockFacilitator` (`mock_facilitator.py`) which approves all valid transactions, allowing you to test the payment flow without real transactions.
-- When `USE_MOCK_FACILITATOR=false`, it uses a real `FacilitatorClient` with a provided `FacilitatorConfig` to process actual onchain transactions.
-
-To use a real payment processor, set `USE_MOCK_FACILITATOR=false` and provide a valid `FacilitatorConfig`.
-
 ### Wallet
 The `ClientAgent` does not handle signing directly. Instead, it depends on a `Wallet` interface (`wallet.py`). This makes the signing mechanism fully pluggable.
 
-In the demo, we inject a `MockLocalWallet` which signs transactions using a hardcoded private key. To connect to a real system, a developer could implement:
-- A wallet that connects to a browser extension like MetaMask.
-- A wallet that calls out to a secure MPC (Multi-Party Computation) service.
-- A wallet that communicates with a hardware signing device.
+The demo includes two wallet implementations:
 
-This architecture ensures that the agent's orchestration logic remains completely separate from the specifics of payment signing.
+- **`MockLocalWallet`**: Signs transactions using a hardcoded private key (for testing only)
+- **`SLWallet`**: Uses Silence Laboratories MPC infrastructure for secure signing(for testing only)
+
+**Wallet Selection**: Control which wallet to use with the `USE_MOCK_WALLET` environment variable:
+- `USE_MOCK_WALLET=true`: Uses `MockLocalWallet`
+- `USE_MOCK_WALLET=false` or unset: Uses `SLWallet` (default)
+
+**SLWallet Features**:
+- Agent registration with SL wallet orchestrator
+- Phone-based approval for transactions
+- Secure MPC signing without exposing private keys
+- Automatic browser registration flow
