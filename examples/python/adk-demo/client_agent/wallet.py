@@ -61,8 +61,10 @@ class SLAccount:
     def address(self) -> str:
         """Get the wallet address from agent registration."""
         if self._address is None:
-            self._address = self._get_address_from_api()
+            self._address = self._get_address()
         return self._address
+
+        
     
     def sign_message(self, message_hash, receiver_address=None, amount=None, chain_id=None):
       
@@ -109,7 +111,7 @@ class SLAccount:
      
         return signature_hex
     
-    def _get_address_from_api(self) -> str:
+    def _get_address(self) -> str:
         """Get wallet address from orchestrator API."""
         try:
             response = requests.post(
@@ -180,35 +182,43 @@ class SLWallet(Wallet):
             return True
         
         # Check if agent is already registered with the API
+        if self._is_agent_registered():
+            self._is_registered = True
+            return True
+        
+        # If not registered, open registration page
+        registration_url = f"{self.frontend_url}/agent-register?agentToken={self.agent_token}"
+        webbrowser.open(registration_url)
+        
+        print("🔗 Registration page opened. Please complete registration in your browser...")
+        
+        # Poll for registration completion
+        max_wait_time = 300  # 5 minutes
+        poll_interval = 2    # Check every 2 seconds
+        start_time = time.time()
+        
+        while time.time() - start_time < max_wait_time:
+            if self._is_agent_registered():
+                self._is_registered = True
+                return True
+            time.sleep(poll_interval)
+        
+        raise Exception("Registration timeout!")
+    
+    def _is_agent_registered(self) -> bool:
+        """Check if agent is registered."""
         try:
             response = requests.post(
                 f"{self.orchestrator_url}/api/agent-status",
                 json={"agentToken": self.agent_token},
                 timeout=5
             )
-            
             if response.status_code == 200:
                 result = response.json()
-                if result.get('valid', False):
-                    self._is_registered = True
-                    return True
+                return result.get('valid', False)
         except Exception as e:
-            logging.info(f"Could not check registration status: {str(e)}")
-            
-        
-        # If not registered, move to registration page
-        registration_url = f"{self.frontend_url}/agent-register?agentToken={self.agent_token}"
-        # Automatically open the registration URL
-        webbrowser.open(registration_url)
-    
-        time.sleep(20)  
-        # initialize the SL account
-        try:
-            self.sl_account = SLAccount(self.agent_token, self.orchestrator_url)
-            self._is_registered = True
-            return True
-        except Exception as e:
-            raise Exception("Agent registration failed. Please complete the registration in your browser and try again.")
+            logging.debug(f"Could not check registration status: {str(e)}")
+        return False
     
     def sign_payment(self, requirements: x402PaymentRequiredResponse) -> PaymentPayload:
         """
