@@ -15,7 +15,7 @@ The reusable, core logic for the x402 protocol is encapsulated in the `x402_a2a`
 - `uv` (for environment and package management)
 - Google API key (you can create one [here](https://ai.google.dev/gemini-api/docs/api-key))
 - **Silence Laboratories MPC Wallet** (for SLWallet)
-  - You need to create an wallet on the [Silence Laboratories MPC Wallet](https://paired-key-vault.demo.silencelaboratories.com) and setup a wallet,Setup instructions are [here](https://shadowed-grapple-8a1.notion.site/Browser-Intent-S-L-Wallet-Using-Duo-sdk-271fe2c2b4bd8067b7b2cb3e20308eb1).
+  - You need to create an wallet on the [Silence Laboratories MPC Wallet](https://paired-key-vault.demo.silencelaboratories.com) and setup a wallet. Setup instructions are [here](docs/instructions.md).
 - **Note**: SLWallet currently only works with mock facilitator (`USE_MOCK_FACILITATOR=true`)
 
 ### 1. Setup the Environment
